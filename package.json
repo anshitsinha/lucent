@@ -1,0 +1,30 @@
+{
+  "name": "lucent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "On-device AI image upscaler and enhancer - Real-ESRGAN on hand-written WebGPU kernels, entirely in the browser",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "convert": "node scripts/convert-weights.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@vitest/browser-playwright": "^5.1.0",
+    "@webgpu/types": "^0.1.74",
+    "fflate": "^0.8.3",
+    "playwright": "^1.65.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}
