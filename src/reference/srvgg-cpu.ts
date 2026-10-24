@@ -6,8 +6,8 @@
  */
 import type { SrvggModel } from "../model/srvgg";
 
-/** rgb: planar [3][h][w] in [0,1]. Returns planar [3][h*r][w*r], unclamped. */
-export function srvggForwardCpu(model: SrvggModel, rgb: Float32Array, w: number, h: number): Float32Array {
+/** Output of the final conv, planar [3*r*r][h][w], before pixel shuffle. */
+export function srvggFeaturesCpu(model: SrvggModel, rgb: Float32Array, w: number, h: number): Float32Array {
   const hw = w * h;
   let x = rgb;
   for (const layer of model.layers) {
@@ -40,6 +40,13 @@ export function srvggForwardCpu(model: SrvggModel, rgb: Float32Array, w: number,
     }
     x = y;
   }
+  return x;
+}
+
+/** rgb: planar [3][h][w] in [0,1]. Returns planar [3][h*r][w*r], unclamped. */
+export function srvggForwardCpu(model: SrvggModel, rgb: Float32Array, w: number, h: number): Float32Array {
+  const hw = w * h;
+  const x = srvggFeaturesCpu(model, rgb, w, h);
   // pixel shuffle + nearest-upsampled input
   const r = model.scale;
   const W = w * r;
