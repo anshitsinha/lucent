@@ -1,5 +1,5 @@
 import { getGpu } from "../src/gpu/device";
-import { parseSafetensors } from "../src/model/safetensors";
+import { f16ToF32, parseSafetensors } from "../src/model/safetensors";
 import { type SrvggModel, srvggFromTensors } from "../src/model/srvgg";
 
 export async function device(): Promise<GPUDevice> {
@@ -40,13 +40,14 @@ export function planar(img: ImageData): Float32Array {
   return out;
 }
 
-export async function readBuffer(device: GPUDevice, src: GPUBuffer, bytes: number): Promise<Float32Array> {
+export async function readBuffer(device: GPUDevice, src: GPUBuffer, bytes: number, type: "f32" | "f16" = "f32"): Promise<Float32Array> {
   const rb = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
   const enc = device.createCommandEncoder();
   enc.copyBufferToBuffer(src, 0, rb, 0, bytes);
   device.queue.submit([enc.finish()]);
   await rb.mapAsync(GPUMapMode.READ);
-  const out = new Float32Array(rb.getMappedRange().slice(0));
+  const raw = rb.getMappedRange().slice(0);
+  const out = type === "f16" ? f16ToF32(new Uint16Array(raw)) : new Float32Array(raw);
   rb.destroy();
   return out;
 }

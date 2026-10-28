@@ -4,7 +4,8 @@
  * for the largest region it will see.
  */
 import type { ConvLayer, SrvggModel } from "../model/srvgg";
-import { type ConvTiling, DEFAULT_TILING, convWgsl, tilingFor } from "./kernels";
+import { f32ToF16 } from "../model/safetensors";
+import { type ConvTiling, DEFAULT_TILING, type Precision, convWgsl, tilingFor } from "./kernels";
 
 interface GpuLayer {
   in4: number;
@@ -64,15 +65,21 @@ export class GpuSrvgg {
   private capacity = 0; // pixels
   private bindGroups: GPUBindGroup[] = [];
 
+  /** bytes per packed group of 4 channels */
+  readonly groupBytes: number;
+
   constructor(
     private device: GPUDevice,
     model: SrvggModel,
+    readonly precision: Precision = "f32",
     tiling: ConvTiling = DEFAULT_TILING,
   ) {
     this.scale = model.scale;
+    this.groupBytes = precision === "f16" ? 8 : 16;
     const upload = (data: Float32Array, label: string) => {
-      const buf = device.createBuffer({ label, size: Math.max(16, data.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-      device.queue.writeBuffer(buf, 0, data);
+      const typed = precision === "f16" ? f32ToF16(data) : data;
+      const buf = device.createBuffer({ label, size: Math.max(16, typed.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      device.queue.writeBuffer(buf, 0, typed);
       return buf;
     };
     this.layers = model.layers.map((l, i) => {
@@ -81,7 +88,7 @@ export class GpuSrvgg {
       return {
         ...shape,
         tiling: t,
-        pipeline: cachedPipeline(device, convWgsl(shape, t), `conv${i}`),
+        pipeline: cachedPipeline(device, convWgsl(shape, t, precision), `conv${i}`),
         weights: upload(packConvWeights(l), `w${i}`),
         bias: upload(padTo4(l.bias), `b${i}`),
         alpha: upload(padTo4(l.alpha ?? new Float32Array(4)), `a${i}`),
@@ -96,7 +103,7 @@ export class GpuSrvgg {
     this.bufA?.destroy();
     this.bufB?.destroy();
     const groups = Math.max(...this.layers.map((l) => Math.max(l.in4, l.out4)));
-    const size = pixels * groups * 16;
+    const size = pixels * groups * this.groupBytes;
     const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
     this.bufA = this.device.createBuffer({ label: "actA", size, usage });
     this.bufB = this.device.createBuffer({ label: "actB", size, usage });

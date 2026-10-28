@@ -25,7 +25,9 @@ async function acquire(): Promise<GpuContext> {
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
   if (!adapter) throw new WebGpuUnavailableError("No WebGPU adapter is available (GPU blocklisted or disabled?).");
   const a = adapter.limits;
+  const requiredFeatures: GPUFeatureName[] = adapter.features.has("shader-f16") ? ["shader-f16"] : [];
   const device = await adapter.requestDevice({
+    requiredFeatures,
     requiredLimits: {
       maxStorageBufferBindingSize: a.maxStorageBufferBindingSize,
       maxBufferSize: a.maxBufferSize,

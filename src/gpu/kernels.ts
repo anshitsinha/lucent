@@ -25,9 +25,21 @@ export interface ConvTiling {
   py: number;
   /** output channel groups per thread; workgroups split the rest over z */
   og: number;
+  /** stage each input group's weights in workgroup memory (vs. reading storage) */
+  ws?: boolean;
 }
 
-export const DEFAULT_TILING: ConvTiling = { tx: 16, ty: 8, py: 2, og: 8 };
+export type Precision = "f32" | "f16";
+
+/** Storage/math types: S = 4 packed activations, M = a 4x4 weight block. */
+export function typeHeader(precision: Precision): string {
+  return precision === "f16"
+    ? "enable f16;\nalias S = vec4<f16>;\nalias M = mat4x4<f16>;\n"
+    : "alias S = vec4f;\nalias M = mat4x4f;\n";
+}
+
+/** Fastest in bench/conv-sweep (f32 and f16) - see docs/PERFORMANCE.md */
+export const DEFAULT_TILING: ConvTiling = { tx: 16, ty: 8, py: 4, og: 4, ws: true };
 
 /** Pick an og that divides out4 (falls back toward smaller splits). */
 export function tilingFor(shape: ConvShape, base: ConvTiling = DEFAULT_TILING): ConvTiling {
@@ -36,7 +48,7 @@ export function tilingFor(shape: ConvShape, base: ConvTiling = DEFAULT_TILING): 
   return { ...base, og };
 }
 
-export function convWgsl(shape: ConvShape, t: ConvTiling): string {
+export function convWgsl(shape: ConvShape, t: ConvTiling, precision: Precision = "f32"): string {
   const { in4, prelu } = shape;
   const { tx, ty, py, og } = t;
   const sw = tx + 2;
@@ -54,7 +66,7 @@ export function convWgsl(shape: ConvShape, t: ConvTiling): string {
         body.push(`    let v${p}_${tap} = tile[(lid.y + ${p * ty + ky}u) * ${sw}u + lid.x + ${kx}u];`);
       }
       for (let o = 0; o < og; o++) {
-        body.push(`    { let m = wt[wb + ${o * in4 * 9 + tap}u];`);
+        body.push(t.ws ? `    { let m = wtile[${o * 9 + tap}u];` : `    { let m = wt[wb + ${o * in4 * 9 + tap}u];`);
         for (let p = 0; p < py; p++) body.push(`      a${o}_${p} += m * v${p}_${tap};`);
         body.push(`    }`);
       }
@@ -66,7 +78,7 @@ export function convWgsl(shape: ConvShape, t: ConvTiling): string {
     for (let o = 0; o < og; o++) {
       const v = `a${o}_${p}`;
       if (prelu) {
-        acc.push(`      { let s = alpha[og0 + ${o}u]; dst[((og0 + ${o}u) * p.h + y) * p.w + x] = select(${v} * s, ${v}, ${v} > vec4f(0.0)); }`);
+        acc.push(`      { let s = alpha[og0 + ${o}u]; dst[((og0 + ${o}u) * p.h + y) * p.w + x] = select(${v} * s, ${v}, ${v} > S(0.0)); }`);
       } else {
         acc.push(`      dst[((og0 + ${o}u) * p.h + y) * p.w + x] = ${v};`);
       }
@@ -74,16 +86,17 @@ export function convWgsl(shape: ConvShape, t: ConvTiling): string {
     acc.push(`    }`, `  }`);
   }
 
-  return /* wgsl */ `
+  return /* wgsl */ `${typeHeader(precision)}
 struct Params { w: u32, h: u32, _a: u32, _b: u32 }
-@group(0) @binding(0) var<storage, read> src: array<vec4f>;
-@group(0) @binding(1) var<storage, read> wt: array<mat4x4f>;
-@group(0) @binding(2) var<storage, read> bias: array<vec4f>;
-@group(0) @binding(3) var<storage, read> alpha: array<vec4f>;
-@group(0) @binding(4) var<storage, read_write> dst: array<vec4f>;
+@group(0) @binding(0) var<storage, read> src: array<S>;
+@group(0) @binding(1) var<storage, read> wt: array<M>;
+@group(0) @binding(2) var<storage, read> bias: array<S>;
+@group(0) @binding(3) var<storage, read> alpha: array<S>;
+@group(0) @binding(4) var<storage, read_write> dst: array<S>;
 @group(0) @binding(5) var<uniform> p: Params;
 
-var<workgroup> tile: array<vec4f, ${sw * sh}>;
+var<workgroup> tile: array<S, ${sw * sh}>;
+${t.ws ? `var<workgroup> wtile: array<M, ${og * 9}>;` : ""}
 
 @compute @workgroup_size(${tx}, ${ty})
 fn main(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_id) lid: vec3u,
@@ -98,14 +111,17 @@ ${decl.join("\n")}
     for (var i = li; i < ${sw * sh}u; i += ${tx * ty}u) {
       let gx = i32(x0) + i32(i % ${sw}u) - 1;
       let gy = i32(y0) + i32(i / ${sw}u) - 1;
-      var v = vec4f(0.0);
+      var v = S(0.0);
       if (gx >= 0 && gx < i32(p.w) && gy >= 0 && gy < i32(p.h)) {
         v = src[(ig * p.h + u32(gy)) * p.w + u32(gx)];
       }
       tile[i] = v;
     }
-    workgroupBarrier();
     let wb = (og0 * ${in4}u + ig) * 9u;
+${t.ws ? `    for (var i = li; i < ${og * 9}u; i += ${tx * ty}u) {
+      wtile[i] = wt[wb + (i / 9u) * ${in4 * 9}u + i % 9u];
+    }` : ""}
+    workgroupBarrier();
 ${body.join("\n")}
     workgroupBarrier();
   }
@@ -115,17 +131,17 @@ ${acc.join("\n")}
 }
 
 /** Copy a region of the source image into a 1-group activation buffer (rgb, 0). */
-export const PACK_WGSL = /* wgsl */ `
+export const packWgsl = (precision: Precision) => /* wgsl */ `${typeHeader(precision)}
 struct Params { rx: i32, ry: i32, rw: u32, rh: u32 }
 @group(0) @binding(0) var src: texture_2d<f32>;
-@group(0) @binding(1) var<storage, read_write> dst: array<vec4f>;
+@group(0) @binding(1) var<storage, read_write> dst: array<S>;
 @group(0) @binding(2) var<uniform> p: Params;
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= p.rw || id.y >= p.rh) { return; }
   let c = textureLoad(src, vec2i(p.rx + i32(id.x), p.ry + i32(id.y)), 0);
-  dst[id.y * p.rw + id.x] = vec4f(c.rgb, 0.0);
+  dst[id.y * p.rw + id.x] = S(vec4f(c.rgb, 0.0));
 }
 `;
 
@@ -135,13 +151,13 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
  * filter, blend toward a bicubic upscale by `fidelity`, and carry alpha over
  * bicubically. Writes linear-in-value vec4 for the sharpen pass.
  */
-export const COMPOSE_WGSL = /* wgsl */ `
+export const composeWgsl = (precision: Precision) => /* wgsl */ `${typeHeader(precision)}
 struct Params {
   rx: i32, ry: i32, rw: i32, rh: i32,   // network region, source px
   ox: i32, oy: i32, ow: i32, oh: i32,   // rect to produce, output px
   iw: i32, ih: i32, scale: f32, fidelity: f32,
 }
-@group(0) @binding(0) var<storage, read> net: array<vec4f>;
+@group(0) @binding(0) var<storage, read> net: array<S>;
 @group(0) @binding(1) var src: texture_2d<f32>;
 @group(0) @binding(2) var<storage, read_write> dst: array<vec4f>;
 @group(0) @binding(3) var<uniform> p: Params;
@@ -161,9 +177,9 @@ fn hr(X: i32, Y: i32) -> vec3f {
   let k = sub % 4u;
   let plane = u32(p.rw * p.rh);
   let i = u32(y * p.rw + x);
-  let r = net[g * plane + i][k];
-  let gg = net[(4u + g) * plane + i][k];
-  let b = net[(8u + g) * plane + i][k];
+  let r = f32(net[g * plane + i][k]);
+  let gg = f32(net[(4u + g) * plane + i][k]);
+  let b = f32(net[(8u + g) * plane + i][k]);
   return vec3f(r, gg, b) + srcPx(p.rx + x, p.ry + y).rgb;
 }
 

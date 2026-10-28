@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Enhancer, type TileResult } from "../src/gpu/enhancer";
 import { GpuSrvgg } from "../src/gpu/network";
-import { PACK_WGSL } from "../src/gpu/kernels";
+import { packWgsl } from "../src/gpu/kernels";
 import { blendModels } from "../src/model/srvgg";
 import { srvggFeaturesCpu, srvggForwardCpu } from "../src/reference/srvgg-cpu";
 import { device, loadModel, planar, readBuffer, testImage } from "./helpers";
@@ -22,18 +22,23 @@ async function runEnhancer(e: Enhancer, img: ImageData, opts: Parameters<Enhance
 }
 
 describe("SRVGGNetCompact on WebGPU", () => {
-  for (const name of ["realesr-animevideov3", "realesr-general-x4v3"]) {
-    it(`${name}: final conv features match the CPU reference`, async () => {
+  for (const [name, precision] of [
+    ["realesr-animevideov3", "f32"],
+    ["realesr-general-x4v3", "f32"],
+    ["realesr-general-x4v3", "f16"],
+  ] as const) {
+    it(`${name} (${precision}): final conv features match the CPU reference`, async () => {
       const dev = await device();
+      if (precision === "f16" && !dev.features.has("shader-f16")) return;
       const model = await loadModel(name);
       const img = testImage(21, 13); // deliberately not a multiple of the workgroup tile
       const { width: w, height: h } = img;
 
-      const net = new GpuSrvgg(dev, model);
+      const net = new GpuSrvgg(dev, model, precision);
       net.reserve(w * h);
       const tex = dev.createTexture({ size: [w, h], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
       dev.queue.writeTexture({ texture: tex }, img.data, { bytesPerRow: w * 4 }, [w, h]);
-      const pack = dev.createComputePipeline({ layout: "auto", compute: { module: dev.createShaderModule({ code: PACK_WGSL }), entryPoint: "main" } });
+      const pack = dev.createComputePipeline({ layout: "auto", compute: { module: dev.createShaderModule({ code: packWgsl(precision) }), entryPoint: "main" } });
       const params = dev.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       dev.queue.writeBuffer(params, 0, new Int32Array([0, 0, w, h]));
       const enc = dev.createCommandEncoder();
@@ -50,7 +55,7 @@ describe("SRVGGNetCompact on WebGPU", () => {
       dev.queue.submit([enc.finish()]);
 
       const groups = 12;
-      const gpu = await readBuffer(dev, net.output, groups * w * h * 16);
+      const gpu = await readBuffer(dev, net.output, groups * w * h * net.groupBytes, precision);
       const ref = srvggFeaturesCpu(model, planar(img), w, h);
       let maxErr = 0;
       let maxRef = 0;
@@ -62,18 +67,19 @@ describe("SRVGGNetCompact on WebGPU", () => {
           maxRef = Math.max(maxRef, Math.abs(r));
         }
       }
-      console.log(`${name}: max |gpu - cpu| = ${maxErr.toExponential(2)} (max |ref| ${maxRef.toFixed(3)})`);
-      expect(maxErr).toBeLessThan(1e-3);
+      console.log(`${name} ${precision}: max |gpu - cpu| = ${maxErr.toExponential(2)} (max |ref| ${maxRef.toFixed(3)})`);
+      expect(maxErr).toBeLessThan(precision === "f16" ? 2e-2 : 1e-3);
       net.destroy();
     });
   }
 
-  it("full pipeline at 4x matches the CPU reference to within 1/255", async () => {
+  for (const precision of ["f32", "f16"] as const) it(`full pipeline at 4x matches the CPU reference (${precision})`, async () => {
     const dev = await device();
-    const model = await loadModel("realesr-animevideov3");
+    if (precision === "f16" && !dev.features.has("shader-f16")) return;
+    const model = await loadModel("realesr-general-x4v3");
     const img = testImage(19, 14, 7);
     const e = new Enhancer(dev);
-    e.setModel(model);
+    e.setModel(model, precision);
     const { out, w, h } = await runEnhancer(e, img, { scale: 4, fidelity: 0, sharpen: 0, grain: 0 });
     const ref = srvggForwardCpu(model, planar(img), img.width, img.height);
     let maxErr = 0;
@@ -83,7 +89,8 @@ describe("SRVGGNetCompact on WebGPU", () => {
         maxErr = Math.max(maxErr, Math.abs(out[i * 4 + c] - r));
       }
     }
-    expect(maxErr).toBeLessThanOrEqual(1);
+    console.log(`4x pipeline ${precision}: max ${maxErr}/255`);
+    expect(maxErr).toBeLessThanOrEqual(precision === "f16" ? 3 : 1);
     e.destroy();
   });
 

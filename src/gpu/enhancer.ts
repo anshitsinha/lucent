@@ -9,7 +9,7 @@
  * stitch without seams; only the true image border sees zero padding, which
  * is what the network was trained with.
  */
-import { COMPOSE_WGSL, FINISH_WGSL, PACK_WGSL } from "./kernels";
+import { FINISH_WGSL, type Precision, composeWgsl, packWgsl } from "./kernels";
 import { GpuSrvgg, cachedPipeline } from "./network";
 import type { SrvggModel } from "../model/srvgg";
 
@@ -79,8 +79,8 @@ function align(n: number, a: number) {
 
 export class Enhancer {
   private net: GpuSrvgg | null = null;
-  private packPipe: GPUComputePipeline;
-  private composePipe: GPUComputePipeline;
+  private packPipe!: GPUComputePipeline;
+  private composePipe!: GPUComputePipeline;
   private finishPipe: GPUComputePipeline;
   private packParams: GPUBuffer;
   private composeParams: GPUBuffer;
@@ -93,8 +93,6 @@ export class Enhancer {
   private running: Promise<unknown> = Promise.resolve();
 
   constructor(readonly device: GPUDevice) {
-    this.packPipe = cachedPipeline(device, PACK_WGSL, "pack");
-    this.composePipe = cachedPipeline(device, COMPOSE_WGSL, "compose");
     this.finishPipe = cachedPipeline(device, FINISH_WGSL, "finish");
     const uni = (size: number) => device.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.packParams = uni(16);
@@ -102,9 +100,16 @@ export class Enhancer {
     this.finishParams = uni(32);
   }
 
-  setModel(model: SrvggModel) {
+  /** fp16 when the device has shader-f16, else fp32 */
+  static defaultPrecision(device: GPUDevice): Precision {
+    return device.features.has("shader-f16") ? "f16" : "f32";
+  }
+
+  setModel(model: SrvggModel, precision: Precision = Enhancer.defaultPrecision(this.device)) {
     this.net?.destroy();
-    this.net = new GpuSrvgg(this.device, model);
+    this.net = new GpuSrvgg(this.device, model, precision);
+    this.packPipe = cachedPipeline(this.device, packWgsl(precision), `pack-${precision}`);
+    this.composePipe = cachedPipeline(this.device, composeWgsl(precision), `compose-${precision}`);
   }
 
   /** Upload the image to enhance. Returns its size. */

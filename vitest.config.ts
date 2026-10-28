@@ -31,7 +31,7 @@ function findBrowser(): string | undefined {
 
 export default defineConfig({
   test: {
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.ts", "bench/**/*.test.ts"],
     testTimeout: 120_000,
     browser: {
       enabled: true,
