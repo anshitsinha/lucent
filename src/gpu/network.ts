@@ -10,6 +10,7 @@ import { type ConvTiling, DEFAULT_TILING, type Precision, convWgsl, tilingFor } 
 interface GpuLayer {
   in4: number;
   out4: number;
+  prelu: boolean;
   tiling: ConvTiling;
   pipeline: GPUComputePipeline;
   weights: GPUBuffer;
@@ -95,6 +96,26 @@ export class GpuSrvgg {
       };
     });
     this.paramBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  }
+
+  /**
+   * Overwrite the weights in place with another model of the same shape
+   * (e.g. a new denoise blend). Returns false if the shapes differ.
+   */
+  load(model: SrvggModel): boolean {
+    if (model.layers.length !== this.layers.length) return false;
+    if (model.layers.some((l, i) => Math.ceil(l.cin / 4) !== this.layers[i].in4 || Math.ceil(l.cout / 4) !== this.layers[i].out4 || !!l.alpha !== this.layers[i].prelu)) {
+      return false;
+    }
+    const write = (buf: GPUBuffer, data: Float32Array) =>
+      this.device.queue.writeBuffer(buf, 0, this.precision === "f16" ? f32ToF16(data) : data);
+    model.layers.forEach((l, i) => {
+      const g = this.layers[i];
+      write(g.weights, packConvWeights(l));
+      write(g.bias, padTo4(l.bias));
+      if (l.alpha) write(g.alpha, padTo4(l.alpha));
+    });
+    return true;
   }
 
   /** Activation buffers fit regions of up to `pixels`; grows on demand. */

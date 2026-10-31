@@ -29,6 +29,8 @@ export interface EnhanceOptions {
   signal?: AbortSignal;
   /** tiles are processed nearest-first to this source-space point */
   focus?: { x: number; y: number };
+  /** called as each tile is submitted to the GPU (output-space rect) */
+  onTileStart?: (rect: { x: number; y: number; width: number; height: number }) => void;
 }
 
 export interface TileResult {
@@ -105,7 +107,13 @@ export class Enhancer {
     return device.features.has("shader-f16") ? "f16" : "f32";
   }
 
+  /**
+   * Swap weights. Call between runs (await `idle()` after aborting): tiles
+   * already queued would otherwise mix old and new weights.
+   */
   setModel(model: SrvggModel, precision: Precision = Enhancer.defaultPrecision(this.device)) {
+    // same architecture: overwrite the weights in place (denoise slider drags)
+    if (this.net && this.net.precision === precision && this.net.load(model)) return;
     this.net?.destroy();
     this.net = new GpuSrvgg(this.device, model, precision);
     this.packPipe = cachedPipeline(this.device, packWgsl(precision), `pack-${precision}`);
@@ -141,6 +149,14 @@ export class Enhancer {
     const next = this.running.catch(() => {}).then(() => this.runNow(opts, onTile));
     this.running = next;
     return next;
+  }
+
+  /** Resolves once the current run (if any) has stopped. */
+  idle(): Promise<void> {
+    return this.running.then(
+      () => {},
+      () => {},
+    );
   }
 
   private async runNow(opts: EnhanceOptions, onTile: (t: TileResult) => void) {
@@ -248,6 +264,7 @@ export class Enhancer {
       await done[index % 2]; // tile n-2 has released this buffer
       enc.copyBufferToBuffer(this.finished!, 0, rb, 0, align(bytes, 4));
       device.queue.submit([enc.finish()]);
+      opts.onTileStart?.({ x: tx, y: ty, width: tw, height: th });
 
       const prev = last;
       last = done[index % 2] = (async () => {
