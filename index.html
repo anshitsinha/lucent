@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>lucent — AI image upscaler, on your device</title>
+    <meta name="description" content="Upscale, denoise and sharpen images with AI, entirely in your browser on your GPU. Nothing is uploaded." />
+    <meta name="theme-color" content="#0e1014" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="topbar">
+        <div class="brand">
+          <img class="logo" src="/favicon.svg" alt="" width="24" height="24" />
+          <span class="brand-name">lucent</span>
+          <span class="brand-tag">on-device AI upscaler</span>
+        </div>
+        <div class="topbar-actions">
+          <span class="gpu-badge" id="gpu-badge" title="Runs on this GPU">checking GPU…</span>
+          <button class="btn ghost" id="open-btn" title="Open images (Ctrl+O)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+            <span>Open</span>
+          </button>
+          <button class="btn primary" id="export-btn" disabled title="Export (Ctrl+S)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></svg>
+            <span>Export</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="stage" id="stage" aria-label="Image viewer">
+          <div class="viewer" id="viewer"></div>
+
+          <div class="empty" id="empty">
+            <div class="empty-card">
+              <svg class="empty-icon" viewBox="0 0 48 48" aria-hidden="true">
+                <rect x="6" y="9" width="36" height="30" rx="4" />
+                <path d="m6 32 10-10 9 9 6-6 11 11" />
+                <circle cx="33" cy="18" r="3" />
+              </svg>
+              <h1>Drop images to enhance</h1>
+              <p>Upscale up to 4×, remove noise and recover detail with AI that runs on your own GPU. Nothing leaves your device.</p>
+              <div class="empty-actions">
+                <button class="btn primary" id="empty-open">Choose images</button>
+                <button class="btn ghost" id="sample-btn">Try a sample</button>
+              </div>
+              <p class="hint small-print">or drop / paste (<kbd>Ctrl</kbd> <kbd>V</kbd>) images anywhere</p>
+            </div>
+          </div>
+
+          <div class="unsupported" id="unsupported" hidden>
+            <div class="empty-card">
+              <h1>WebGPU isn't available</h1>
+              <p id="unsupported-msg">lucent runs its AI model on your GPU through WebGPU. Try a recent Chrome, Edge or Safari 26+ on desktop, or Chrome on Android.</p>
+            </div>
+          </div>
+
+          <div class="drop-overlay" id="drop-overlay" hidden><span>Drop to add</span></div>
+
+          <div class="view-tools" id="view-tools" hidden>
+            <div class="seg" role="group" aria-label="Compare mode">
+              <button data-mode="original" title="Original (hold Space)">Before</button>
+              <button data-mode="split" class="on" title="Split view">Split</button>
+              <button data-mode="enhanced" title="Enhanced">After</button>
+            </div>
+            <div class="seg" role="group" aria-label="Zoom">
+              <button id="zoom-out" title="Zoom out (-)">−</button>
+              <button id="zoom-label" class="zoom-label" title="Fit (F) / 100% (1)">100%</button>
+              <button id="zoom-in" title="Zoom in (+)">+</button>
+            </div>
+          </div>
+
+          <div class="queue" id="queue" hidden></div>
+        </section>
+
+        <aside class="panel" aria-label="Enhancement settings">
+          <div class="panel-scroll">
+            <section class="group">
+              <h2>AI model</h2>
+              <div class="seg wide" role="radiogroup" id="model-seg">
+                <button data-model="standard" role="radio">Standard</button>
+                <button data-model="illustration" role="radio">Illustration</button>
+              </div>
+              <p class="note" id="model-hint"></p>
+            </section>
+
+            <section class="group">
+              <h2>Upscale</h2>
+              <div class="seg wide" role="radiogroup" id="scale-seg">
+                <button data-scale="1" role="radio">1×</button>
+                <button data-scale="2" role="radio">2×</button>
+                <button data-scale="3" role="radio">3×</button>
+                <button data-scale="4" role="radio">4×</button>
+              </div>
+              <div class="dims">
+                <label>W <input type="number" id="out-w" min="1" inputmode="numeric" /></label>
+                <span class="x">×</span>
+                <label>H <input type="number" id="out-h" min="1" inputmode="numeric" /></label>
+                <span class="unit">px</span>
+              </div>
+              <p class="note" id="scale-note"></p>
+            </section>
+
+            <section class="group">
+              <h2>Adjust</h2>
+              <div class="slider" data-key="denoise">
+                <label for="s-denoise">Denoise</label><output></output>
+                <input id="s-denoise" type="range" min="0" max="100" />
+              </div>
+              <div class="slider" data-key="sharpen">
+                <label for="s-sharpen">Sharpen</label><output></output>
+                <input id="s-sharpen" type="range" min="0" max="100" />
+              </div>
+              <div class="slider" data-key="fidelity">
+                <label for="s-fidelity">Preserve original</label><output></output>
+                <input id="s-fidelity" type="range" min="0" max="100" />
+              </div>
+              <div class="slider" data-key="grain">
+                <label for="s-grain">Add grain</label><output></output>
+                <input id="s-grain" type="range" min="0" max="100" />
+              </div>
+              <button class="btn ghost small" id="reset-btn">Reset adjustments</button>
+            </section>
+
+            <section class="group">
+              <h2>Export</h2>
+              <div class="seg wide" role="radiogroup" id="format-seg">
+                <button data-format="png" role="radio">PNG</button>
+                <button data-format="jpeg" role="radio">JPEG</button>
+                <button data-format="webp" role="radio">WebP</button>
+              </div>
+              <div class="slider" data-key="quality" id="quality-row">
+                <label for="s-quality">Quality</label><output></output>
+                <input id="s-quality" type="range" min="50" max="100" />
+              </div>
+              <button class="btn ghost small" id="export-all-btn" hidden>Export all</button>
+            </section>
+          </div>
+
+          <footer class="status">
+            <div class="progress" id="progress"><div class="progress-bar" id="progress-bar"></div></div>
+            <div class="status-line">
+              <span id="status-text">Ready</span>
+              <span id="status-stats" class="muted"></span>
+            </div>
+          </footer>
+        </aside>
+      </main>
+      <input type="file" id="file-input" accept="image/*" multiple hidden />
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
