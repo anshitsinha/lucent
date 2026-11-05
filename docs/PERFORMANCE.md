@@ -45,3 +45,20 @@ What mattered:
 With a 16 px apron the tile test showed up to 15/255 at seams on a noisy
 image (the 34-conv network sees ±34 px); 24 px brings it to ≤ 2/255 for
 ~10% more work per tile than 16 px.
+
+## End to end (the app)
+
+`npm run build && npm run smoke` — the built app in Brave (Chromium),
+same GPU, fp16, Standard model, default adjustments. Times are from
+choosing the image to the last tile painted, as the status bar reports.
+
+| input | output | 256 px tiles | 384 px | **512 px (default)** |
+| --- | --- | ---: | ---: | ---: |
+| 640×624 (0.4 MP) | 4×, 2560×2496 | 0.7 s | 0.5 s | **0.5 s** |
+| 2560×2496 (6.4 MP) | 2×, 25.6 MP | 14 s | 9.1 s | **6.9 s** |
+
+Tile size mattered far more than the apron arithmetic predicts (1.41× →
+1.20× overhead): each tile is a submit plus a readback round trip, and
+fewer, bigger tiles keep the GPU fed. The enhancer picks the largest of
+512/384/256 px whose buffers fit `maxStorageBufferBindingSize`, so small
+devices still work, with smaller tiles.

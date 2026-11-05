@@ -74,6 +74,20 @@ try {
   await download.saveAs(path);
   check(download.suggestedFilename() === "apollo11-aldrin-lucent-2x.png", `export: ${download.suggestedFilename()}`);
 
+  // a large image: the sample upsized to 2560 x 2496 (6.4 MP) at 2x -> 25.6 MP out
+  await page.evaluate(async () => {
+    const img = await createImageBitmap(await (await fetch("/samples/apollo11-aldrin.jpg")).blob());
+    const c = new OffscreenCanvas(2560, 2496);
+    c.getContext("2d").drawImage(img, 0, 0, 2560, 2496);
+    const blob = await c.convertToBlob({ type: "image/png" });
+    window.lucent.addFiles([new File([blob], "large.png", { type: "image/png" })]);
+  });
+  await page.click("#queue .qitem:last-child");
+  await page.waitForFunction(() => /Enhancing/.test(document.getElementById("status-text")?.textContent ?? ""), null, { timeout: 20000 });
+  await page.waitForFunction(() => document.getElementById("status-text")?.textContent?.startsWith("Done"), null, { timeout: 300000 });
+  check(true, `6.4 MP at 2x: ${await page.textContent("#status-text")} (${await page.textContent("#status-stats")})`);
+  await page.screenshot({ path: `${OUT}/05-batch.png` });
+
   // mobile layout
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await phone.goto(url);

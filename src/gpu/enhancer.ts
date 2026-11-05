@@ -167,8 +167,8 @@ export class Enhancer {
     const scale = Math.min(MAX_SCALE, Math.max(1, opts.scale));
     const iw = source.width;
     const ih = source.height;
-    const tile = opts.tile ?? 256;
     const apron = opts.apron ?? 24;
+    const tile = opts.tile ?? this.pickTile(scale, apron, net.groupBytes);
     const out = outputSize(iw, ih, scale);
     const ox = (x: number) => (x >= iw ? out.width : Math.round(x * scale));
     const oy = (y: number) => (y >= ih ? out.height : Math.round(y * scale));
@@ -276,6 +276,21 @@ export class Enhancer {
       })();
     }
     await last;
+  }
+
+  /**
+   * Largest tile (512 or 256) whose buffers fit the device's binding limit.
+   * Bigger tiles mean fewer round trips and less apron overhead: 512 px is
+   * 1.9x faster than 256 px end to end on a 6.4 MP image (docs/PERFORMANCE.md).
+   */
+  private pickTile(scale: number, apron: number, groupBytes: number): number {
+    const limit = Math.min(this.device.limits.maxStorageBufferBindingSize, this.device.limits.maxBufferSize);
+    for (const tile of [512, 384, 256]) {
+      const act = (tile + 2 * apron + 2) ** 2 * 16 * groupBytes;
+      const composed = (Math.ceil(tile * scale) + 4) ** 2 * 16;
+      if (Math.max(act, composed) <= limit * 0.9) return tile;
+    }
+    return 192;
   }
 
   private reserveScratch(composedBytes: number, finishedBytes: number) {
