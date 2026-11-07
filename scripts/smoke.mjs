@@ -25,8 +25,9 @@ const executablePath = [
   "/usr/bin/chromium",
 ].find((p) => p && existsSync(p));
 
-const server = await preview({ preview: { port: 4317, strictPort: false }, logLevel: "warn" });
-const url = server.resolvedUrls.local[0];
+// SMOKE_URL=https://... tests a deployment instead of a local preview of dist/
+const server = process.env.SMOKE_URL ? null : await preview({ preview: { port: 4317, strictPort: false }, logLevel: "warn" });
+const url = process.env.SMOKE_URL ?? server.resolvedUrls.local[0];
 const browser = await chromium.launch({
   executablePath,
   headless: true,
@@ -104,6 +105,6 @@ try {
   check(false, String(e));
 } finally {
   await browser.close();
-  await new Promise((r) => server.httpServer.close(r));
+  if (server) await new Promise((r) => server.httpServer.close(r));
 }
 process.exit(failed ? 1 : 0);

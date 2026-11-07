@@ -1,7 +1,9 @@
 # lucent
 
 **An AI image upscaler and enhancer that runs entirely in your browser, on
-your own GPU.** Upscale up to 4×, remove noise and recover detail, compare
+your own GPU.** **[Open lucent →](https://lucent-six-hazel.vercel.app)**
+
+Upscale up to 4×, remove noise and recover detail, compare
 before/after live, and export. Nothing is uploaded: there is no server.
 
 It runs Real-ESRGAN's compact models on **hand-written WebGPU kernels**:
@@ -79,6 +81,7 @@ npm run typecheck
 npm test           # GPU kernel tests in headless Chromium (needs a real GPU)
 npm run bench      # conv-kernel tiling × precision sweep
 npm run build && npm run smoke   # drive the built app end to end, screenshots in smoke-out/
+SMOKE_URL=https://lucent-six-hazel.vercel.app npm run smoke   # same, against a deployment
 npm run convert    # re-create public/models/*.safetensors from the upstream .pth files
 ```
 
