@@ -16,6 +16,8 @@ import type { SrvggModel } from "../model/srvgg";
 export interface EnhanceOptions {
   /** output size / input size, 1..4 */
   scale: number;
+  /** exact output size; overrides `scale` (each axis must stay within 1..4x) */
+  size?: { width: number; height: number };
   /** 0 = pure AI output, 1 = plain bicubic */
   fidelity: number;
   /** unsharp-mask amount at output resolution, 0..2 */
@@ -98,7 +100,7 @@ export class Enhancer {
     this.finishPipe = cachedPipeline(device, FINISH_WGSL, "finish");
     const uni = (size: number) => device.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.packParams = uni(16);
-    this.composeParams = uni(48);
+    this.composeParams = uni(64);
     this.finishParams = uni(32);
   }
 
@@ -164,14 +166,19 @@ export class Enhancer {
     const net = this.net;
     const source = this.source;
     if (!net || !source) throw new Error("Enhancer: setModel() and setSource() first");
-    const scale = Math.min(MAX_SCALE, Math.max(1, opts.scale));
     const iw = source.width;
     const ih = source.height;
+    const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(1, s));
+    const out = opts.size
+      ? { width: Math.round(iw * clampScale(opts.size.width / iw)), height: Math.round(ih * clampScale(opts.size.height / ih)) }
+      : outputSize(iw, ih, clampScale(opts.scale));
+    const sx = out.width / iw;
+    const sy = out.height / ih;
+    const scale = Math.max(sx, sy);
     const apron = opts.apron ?? 24;
     const tile = opts.tile ?? this.pickTile(scale, apron, net.groupBytes);
-    const out = outputSize(iw, ih, scale);
-    const ox = (x: number) => (x >= iw ? out.width : Math.round(x * scale));
-    const oy = (y: number) => (y >= ih ? out.height : Math.round(y * scale));
+    const ox = (x: number) => (x >= iw ? out.width : Math.round(x * sx));
+    const oy = (y: number) => (y >= ih ? out.height : Math.round(y * sy));
 
     let rects = planTiles(iw, ih, tile);
     if (opts.focus) {
@@ -232,9 +239,9 @@ export class Enhancer {
 
       const pi = new Int32Array([rx0, ry0, rw, rh]);
       device.queue.writeBuffer(this.packParams, 0, pi);
-      const cp = new ArrayBuffer(48);
+      const cp = new ArrayBuffer(64);
       new Int32Array(cp, 0, 10).set([rx0, ry0, rw, rh, tx - 1, ty - 1, tw + 2, th + 2, iw, ih]);
-      new Float32Array(cp, 40, 2).set([scale, Math.min(1, Math.max(0, opts.fidelity))]);
+      new Float32Array(cp, 40, 3).set([sx, sy, Math.min(1, Math.max(0, opts.fidelity))]);
       device.queue.writeBuffer(this.composeParams, 0, cp);
       const fp = new ArrayBuffer(32);
       new Uint32Array(fp, 0, 4).set([tw, th, tx, ty]);

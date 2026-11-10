@@ -155,7 +155,8 @@ export const composeWgsl = (precision: Precision) => /* wgsl */ `${typeHeader(pr
 struct Params {
   rx: i32, ry: i32, rw: i32, rh: i32,   // network region, source px
   ox: i32, oy: i32, ow: i32, oh: i32,   // rect to produce, output px
-  iw: i32, ih: i32, scale: f32, fidelity: f32,
+  iw: i32, ih: i32, sx: f32, sy: f32,      // output px per source px, per axis
+  fidelity: f32, _p0: f32, _p1: f32, _p2: f32,
 }
 @group(0) @binding(0) var<storage, read> net: array<S>;
 @group(0) @binding(1) var src: texture_2d<f32>;
@@ -226,23 +227,23 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let oy = f32(p.oy + ly) + 0.5;
 
   // source-space sample position (pixel centres at integers)
-  let base = bicubic(ox / p.scale - 0.5, oy / p.scale - 0.5);
+  let base = bicubic(ox / p.sx - 0.5, oy / p.sy - 0.5);
 
   var ai = base.rgb;
   if (p.fidelity < 1.0) {
-    let f = 4.0 / p.scale;                       // hi-res px per output px
-    let hx = ox * f - 0.5 - f32(p.rx * 4);
-    let hy = oy * f - 0.5 - f32(p.ry * 4);
-    if (f <= 1.0001) {
+    let fx = 4.0 / p.sx;                         // hi-res px per output px
+    let fy = 4.0 / p.sy;
+    let hx = ox * fx - 0.5 - f32(p.rx * 4);
+    let hy = oy * fy - 0.5 - f32(p.ry * 4);
+    if (fx <= 1.0001 && fy <= 1.0001) {
       ai = hr(i32(round(hx)), i32(round(hy)));
     } else {
-      let r = 2.0 * f;
       var acc = vec3f(0.0);
       var wsum = 0.0;
-      for (var Y = i32(ceil(hy - r)); Y <= i32(floor(hy + r)); Y++) {
-        let wy = lanczos2((f32(Y) - hy) / f);
-        for (var X = i32(ceil(hx - r)); X <= i32(floor(hx + r)); X++) {
-          let w = wy * lanczos2((f32(X) - hx) / f);
+      for (var Y = i32(ceil(hy - 2.0 * fy)); Y <= i32(floor(hy + 2.0 * fy)); Y++) {
+        let wy = lanczos2((f32(Y) - hy) / fy);
+        for (var X = i32(ceil(hx - 2.0 * fx)); X <= i32(floor(hx + 2.0 * fx)); X++) {
+          let w = wy * lanczos2((f32(X) - hx) / fx);
           acc += w * hr(X, Y);
           wsum += w;
         }
