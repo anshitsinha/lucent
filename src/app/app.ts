@@ -4,7 +4,9 @@
  * starting from the tiles nearest the centre of the view, painting finished
  * tiles over the previous result so the image never blanks.
  */
-import { Enhancer, MAX_SCALE, outputSize } from "../gpu/enhancer";
+import { Enhancer, outputSize } from "../gpu/enhancer";
+import { MAX_TOTAL_SCALE, planPasses, upscale } from "../gpu/upscale";
+import type { SrvggModel } from "../model/srvgg";
 import type { GpuContext } from "../gpu/device";
 import { encode, outputName, pickFolder, saveTo } from "./export";
 import { MODELS, type ModelKind, resolveModel } from "./models";
@@ -181,9 +183,9 @@ export class App {
   // --------------------------------------------------------- enhancing --
 
   private maxScale(): number {
-    if (!this.bitmap) return MAX_SCALE;
+    if (!this.bitmap) return MAX_TOTAL_SCALE;
     const { width: w, height: h } = this.bitmap;
-    return Math.min(MAX_SCALE, Math.sqrt(MAX_PIXELS / (w * h)), MAX_SIDE / Math.max(w, h));
+    return Math.min(MAX_TOTAL_SCALE, Math.sqrt(MAX_PIXELS / (w * h)), MAX_SIDE / Math.max(w, h));
   }
 
   private effectiveScale() {
@@ -211,11 +213,18 @@ export class App {
 
     const s = this.settings;
     const progress = $("progress");
-    let model;
+    const scale = this.effectiveScale();
+    const { width, height } = outputSize(bitmap.width, bitmap.height, scale);
+    const passes = planPasses(bitmap, { width, height }).length;
+    let models: SrvggModel[];
     try {
       this.setStatus("Loading model…", "");
       progress.classList.add("indeterminate");
-      model = await resolveModel(s.model, s.denoise / 100, (f) => this.setStatus(`Loading model ${Math.round(f * 100)}%`, ""));
+      const onProgress = (f: number) => this.setStatus(`Loading model ${Math.round(f * 100)}%`, "");
+      // later passes see an already-clean image: denoise gently to avoid a plastic look
+      models = await Promise.all(
+        Array.from({ length: passes }, (_, i) => resolveModel(s.model, (s.denoise / 100) * (i === 0 ? 1 : 0.25), onProgress)),
+      );
     } catch (e) {
       progress.classList.remove("indeterminate");
       this.failed = true;
@@ -225,10 +234,7 @@ export class App {
     }
     progress.classList.remove("indeterminate");
     if (ctl.signal.aborted) return false;
-    this.enhancer.setModel(model);
 
-    const scale = this.effectiveScale();
-    const { width, height } = outputSize(bitmap.width, bitmap.height, scale);
     if (!this.output || this.output.width !== width || this.output.height !== height) {
       // placeholder: a smooth upscale, replaced tile by tile
       const c = document.createElement("canvas");
@@ -242,32 +248,57 @@ export class App {
     }
     const out = this.output;
     const ctx = out.getContext("2d")!;
-    const focus = this.viewer.focus;
+    ctx.imageSmoothingQuality = "high";
+    const scratch = new OffscreenCanvas(1, 1);
+    const sctx = scratch.getContext("2d")!;
     const t0 = performance.now();
     let done = 0;
     this.setProgress(0);
-    this.setStatus("Enhancing…", `${width} × ${height}`);
+    const label = passes > 1 ? (p: number) => `Enhancing · pass ${p + 1}/${passes}` : () => "Enhancing";
+    this.setStatus(`${label(0)}…`, `${width} × ${height}`);
     try {
-      await this.enhancer.run(
+      const ok = await upscale(
+        this.enhancer,
+        bitmap,
+        { width, height },
         {
-          scale,
+          models: (pass) => models[pass],
           fidelity: s.fidelity / 100,
           sharpen: (s.sharpen / 100) * 2,
           grain: s.grain / 100,
           signal: ctl.signal,
-          focus: { x: focus.x / scale, y: focus.y / scale },
-          onTileStart: (r) => {
-            if (!ctl.signal.aborted) this.viewer.activeTile = r;
+          focus: this.viewer.focus,
+          onTileStart: (r, _pass, size) => {
+            if (ctl.signal.aborted) return;
+            const kx = width / size.width;
+            const ky = height / size.height;
+            this.viewer.activeTile = { x: r.x * kx, y: r.y * ky, width: r.width * kx, height: r.height * ky };
           },
         },
         (t) => {
-          ctx.putImageData(new ImageData(t.pixels, t.width, t.height), t.x, t.y);
+          const image = new ImageData(t.pixels, t.width, t.height);
+          if (t.pass === t.passes - 1) {
+            ctx.putImageData(image, t.x, t.y);
+          } else {
+            // show the intermediate pass stretched to the final size meanwhile
+            const kx = width / t.passSize.width;
+            const ky = height / t.passSize.height;
+            scratch.width = t.width;
+            scratch.height = t.height;
+            sctx.putImageData(image, 0, 0);
+            ctx.drawImage(scratch, t.x * kx, t.y * ky, t.width * kx, t.height * ky);
+          }
+          if (t.index === 0) done = 0;
           done++;
-          this.setProgress(done / t.total);
-          this.setStatus(`Enhancing · ${done}/${t.total}`, `${width} × ${height}`);
+          this.setProgress((t.pass + done / t.total) / t.passes);
+          this.setStatus(`${label(t.pass)} · ${done}/${t.total}`, `${width} × ${height}`);
           this.viewer.invalidate();
         },
       );
+      if (!ok) {
+        if (this.runCtl === ctl) this.viewer.activeTile = null;
+        return false;
+      }
     } catch (e) {
       if (this.runCtl === ctl) this.viewer.activeTile = null;
       this.failed = true;
@@ -279,10 +310,13 @@ export class App {
     this.viewer.invalidate();
     if (ctl.signal.aborted) return false;
     const secs = (performance.now() - t0) / 1000;
-    const mp = (bitmap.width * bitmap.height) / 1e6;
     this.complete = true;
     this.setProgress(1);
-    this.setStatus(`Done in ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`, `${(mp / secs).toFixed(2)} MP/s`);
+    const mpOut = (width * height) / 1e6;
+    this.setStatus(
+      `Done in ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`,
+      passes > 1 ? `${mpOut.toFixed(1)} MP · ${passes} AI passes` : `${((bitmap.width * bitmap.height) / 1e6 / secs).toFixed(2)} MP/s`,
+    );
     return true;
   }
 
@@ -365,7 +399,7 @@ export class App {
         const v = Number(el.value);
         if (!(v > 0)) return this.renderPanel();
         const scale = Math.round((v / this.bitmap[axis]) * 1000) / 1000;
-        this.set("scale", Math.min(MAX_SCALE, Math.max(1, scale)));
+        this.set("scale", Math.min(MAX_TOTAL_SCALE, Math.max(1, scale)));
         this.renderPanel();
       });
     };
@@ -439,7 +473,7 @@ export class App {
         note.textContent = `Capped at ${scale.toFixed(2)}× — browsers can't hold images over ${MAX_PIXELS / 1e6} MP.`;
         note.className = "note warn";
       } else {
-        note.textContent = `${this.bitmap.width} × ${this.bitmap.height} → ${scale.toFixed(scale % 1 ? 2 : 0)}× · ${mp.toFixed(1)} MP`;
+        note.textContent = `${this.bitmap.width} × ${this.bitmap.height} → ${scale.toFixed(scale % 1 ? 2 : 0)}× · ${mp.toFixed(1)} MP${scale > 4 ? " · 2 AI passes" : ""}`;
         note.className = "note";
       }
     } else {

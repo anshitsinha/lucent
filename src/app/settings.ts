@@ -4,7 +4,7 @@ export type OutputFormat = "png" | "jpeg" | "webp";
 
 export interface Settings {
   model: ModelKind;
-  /** output / input, 1..4 */
+  /** output / input, 1..16 */
   scale: number;
   /** 0..100 */
   denoise: number;
@@ -37,7 +37,7 @@ export function loadSettings(): Settings {
     // guard against stale or hand-edited values
     if (!["standard", "illustration"].includes(s.model)) s.model = DEFAULTS.model;
     if (!["png", "jpeg", "webp"].includes(s.format)) s.format = DEFAULTS.format;
-    s.scale = Math.min(4, Math.max(1, Number(s.scale) || DEFAULTS.scale));
+    s.scale = Math.min(16, Math.max(1, Number(s.scale) || DEFAULTS.scale));
     for (const k of ["denoise", "sharpen", "fidelity", "grain"] as const) s[k] = Math.min(100, Math.max(0, Number(s[k]) || 0));
     s.quality = Math.min(100, Math.max(50, Number(s.quality) || DEFAULTS.quality));
     return s;
