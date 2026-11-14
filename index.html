@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>lucent — 16× AI upscaling, on your GPU</title>
+    <meta name="description" content="Upscale images up to 16× with AI that runs entirely in your browser, on your own GPU. Free. No uploads, no account, no install." />
+    <meta name="theme-color" content="#05060a" />
+    <meta property="og:title" content="lucent — Zoom. Enhance." />
+    <meta property="og:description" content="16× AI upscaling that runs on your GPU, in your browser. Nothing is uploaded." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/landing/hero-4x.webp" as="image" />
+  </head>
+  <body class="landing">
+    <canvas id="bg" class="bg" aria-hidden="true"></canvas>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="cursor-glow" aria-hidden="true"></div>
+
+    <header class="nav" id="nav">
+      <a class="nav-brand" href="/">
+        <img src="/favicon.svg" alt="" width="26" height="26" />
+        <span>lucent</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#zoom">Zoom</a>
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#speed">Speed</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="btn-cta small magnetic" href="/app">Launch app <span aria-hidden="true">→</span></a>
+    </header>
+
+    <main>
+      <!-- ============================================================ hero -->
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="pill reveal"><span class="dot"></span> Runs on WebGPU · no uploads · free</p>
+          <h1 class="hero-title">
+            <span class="line reveal">Zoom.</span>
+            <span class="line enhance reveal" data-text="Enhance.">Enhance.</span>
+          </h1>
+          <p class="hero-sub reveal">
+            <strong>16× AI upscaling</strong> that runs entirely on <em>your</em> GPU, inside a browser tab.
+            No uploads. No account. No subscription. No install. Just drop an image.
+          </p>
+          <div class="hero-ctas reveal">
+            <a class="btn-cta magnetic" href="/app">Enhance an image <span aria-hidden="true">→</span></a>
+            <a class="btn-ghost" href="#zoom">Watch it zoom <span aria-hidden="true">↓</span></a>
+          </div>
+          <dl class="hero-stats reveal">
+            <div><dt data-count="16" data-suffix="×">16×</dt><dd>max upscale</dd></div>
+            <div><dt data-count="3.1" data-decimals="1">3.1</dt><dd>TFLOP/s on a laptop GPU</dd></div>
+            <div><dt data-count="0" data-suffix=" B">0 B</dt><dd>uploaded. Ever.</dd></div>
+          </dl>
+        </div>
+
+        <div class="demo reveal" id="demo">
+          <div class="demo-frame tilt">
+            <div class="demo-chrome">
+              <span></span><span></span><span></span>
+              <p id="demo-title">apollo11-aldrin.jpg · 144 px → 576 px</p>
+            </div>
+            <div class="demo-stage" id="demo-stage">
+              <img class="demo-after" id="demo-after" src="/landing/hero-4x.webp" alt="Helmet enhanced 4× by lucent" width="576" height="576" />
+              <div class="demo-before" id="demo-before">
+                <canvas id="demo-before-canvas" width="144" height="144" aria-label="Original 144 pixel crop"></canvas>
+              </div>
+              <div class="demo-scan" id="demo-scan"></div>
+              <div class="demo-handle" id="demo-handle"><span></span></div>
+              <span class="demo-tag left">Original</span>
+              <span class="demo-tag right">lucent 4×</span>
+            </div>
+            <div class="demo-readout" id="demo-readout">
+              <span class="led"></span>
+              <span id="demo-status">Pre-rendered with lucent. Checking for WebGPU…</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================= marquee -->
+      <div class="marquee" aria-hidden="true">
+        <div class="marquee-track">
+          <span>16× upscale</span><i>✦</i><span>0 bytes uploaded</span><i>✦</i><span>hand-written WGSL</span><i>✦</i>
+          <span>fp16 on the GPU</span><i>✦</i><span>Real-ESRGAN</span><i>✦</i><span>no account</span><i>✦</i>
+          <span>batch export</span><i>✦</i><span>live preview</span><i>✦</i><span>works on phones</span><i>✦</i>
+          <span>16× upscale</span><i>✦</i><span>0 bytes uploaded</span><i>✦</i><span>hand-written WGSL</span><i>✦</i>
+          <span>fp16 on the GPU</span><i>✦</i><span>Real-ESRGAN</span><i>✦</i><span>no account</span><i>✦</i>
+          <span>batch export</span><i>✦</i><span>live preview</span><i>✦</i><span>works on phones</span><i>✦</i>
+        </div>
+      </div>
+
+      <!-- ============================================================ zoom -->
+      <section class="zoom" id="zoom">
+        <div class="zoom-sticky">
+          <canvas class="zoom-canvas" id="zoom-canvas"></canvas>
+          <div class="hud" aria-hidden="true">
+            <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+            <div class="hud-top">
+              <span>CAM AS11-40-5903</span>
+              <span id="hud-coords">X 320 · Y 312</span>
+            </div>
+            <div class="hud-bottom">
+              <span class="hud-zoom">ZOOM <b id="hud-zoom">1.0×</b></span>
+              <span class="hud-split"><em>◀ browser upscale</em> <em>lucent ▶</em></span>
+            </div>
+            <div class="hud-reticle" id="hud-reticle"></div>
+          </div>
+          <div class="zoom-words" aria-hidden="true">
+            <span id="w1">ZOOM.</span>
+            <span id="w2">ENHANCE.</span>
+            <span id="w3">ENHANCE.</span>
+          </div>
+          <div class="zoom-caption" id="zoom-caption">
+            <h2>That's a 72 × 72 pixel visor.</h2>
+            <p>
+              Upscaled 16× in two AI passes, by the same code that runs in your browser. The reflection holds Neil
+              Armstrong and the Lunar Module. <span class="muted">(The model reconstructs plausible detail. Great for
+              photos, not for evidence. Sorry, CSI.)</span>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== features -->
+      <section class="section" id="features">
+        <header class="section-head reveal">
+          <p class="eyebrow">Everything a desktop upscaler does</p>
+          <h2>Minus the download.<br /><span class="grad">Minus the upload.</span></h2>
+        </header>
+        <div class="bento">
+          <article class="card span-2 reveal spot">
+            <div class="card-big">16×</div>
+            <h3>Upscale 1× to 16×</h3>
+            <p>Presets or an exact pixel size. Past 4× lucent chains two AI passes, with a gentler second pass so detail doesn't turn to plastic.</p>
+          </article>
+          <article class="card reveal spot">
+            <div class="card-icon lock" aria-hidden="true"></div>
+            <h3>Private by physics</h3>
+            <p>There's no server to upload to. Images are processed by your GPU and never leave the tab.</p>
+            <div class="net"><span>network requests with your photo</span><b>0</b></div>
+          </article>
+          <article class="card reveal spot">
+            <div class="tilegrid" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <h3>Live, tile by tile</h3>
+            <p>Every slider re-runs the model, starting with the tiles in the centre of your view. The image never blanks.</p>
+          </article>
+          <article class="card reveal spot">
+            <div class="slider-demo" aria-hidden="true"><span></span></div>
+            <h3>Real denoise control</h3>
+            <p>The denoise slider blends two networks' <em>weights</em>, not just their outputs.</p>
+          </article>
+          <article class="card reveal spot">
+            <div class="card-icon stack" aria-hidden="true"></div>
+            <h3>Batch it</h3>
+            <p>Drop fifty images, hit <em>Export all</em>, and they go straight into a folder.</p>
+          </article>
+          <article class="card span-2 reveal spot">
+            <div class="modes" aria-hidden="true"><span>Standard</span><span>Illustration</span></div>
+            <h3>Photos <span class="muted">and</span> art</h3>
+            <p>A model for real-world photos, another for anime, illustration and line work. Plus sharpen, film grain and a "preserve original" blend for when the AI gets too creative.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============================================================= how -->
+      <section class="section" id="how">
+        <header class="section-head reveal">
+          <p class="eyebrow">How it works</p>
+          <h2>A neural network, <span class="grad">hand-wired</span><br />into your graphics card.</h2>
+        </header>
+        <ol class="pipeline reveal">
+          <li><b>01</b><h3>Tile</h3><p>Your image is cut into 512 px tiles, each padded with 24 px of real neighbours so the seams vanish.</p></li>
+          <li><b>02</b><h3>34 layers</h3><p>Real-ESRGAN's compact network runs as 34 hand-written WGSL compute kernels in fp16, 3 TFLOP/s.</p></li>
+          <li><b>03</b><h3>Reshape</h3><p>Pixel shuffle to 4×, then Lanczos to your exact size, blended and sharpened.</p></li>
+          <li><b>04</b><h3>Paint</h3><p>Tiles stream back while the GPU starts the next one, nearest-to-your-view first.</p></li>
+        </ol>
+        <div class="layers reveal" aria-hidden="true" id="layers"></div>
+      </section>
+
+      <!-- =========================================================== speed -->
+      <section class="section" id="speed">
+        <header class="section-head reveal">
+          <p class="eyebrow">Benchmarks, measured, not vibes</p>
+          <h2>Fast because every<br /><span class="grad">kernel was earned.</span></h2>
+        </header>
+        <div class="bars reveal" id="bars">
+          <div class="bar" style="--v: 0.19"><span>first kernel</span><b>0.59 TFLOP/s</b></div>
+          <div class="bar" style="--v: 0.39"><span>register blocking</span><b>1.21</b></div>
+          <div class="bar" style="--v: 0.57"><span>weights in shared memory</span><b>1.79</b></div>
+          <div class="bar hot" style="--v: 1"><span>fp16</span><b>3.13 TFLOP/s</b></div>
+        </div>
+        <div class="numbers">
+          <div class="num reveal"><b data-count="0.5" data-decimals="1" data-suffix=" s">0.5 s</b><span>0.4 MP photo → 4×</span></div>
+          <div class="num reveal"><b data-count="6.9" data-decimals="1" data-suffix=" s">6.9 s</b><span>6.4 MP → 25.6 MP</span></div>
+          <div class="num reveal"><b data-count="5.3" data-decimals="1" data-suffix="×">5.3×</b><span>faster than our first kernel</span></div>
+          <div class="num reveal"><b>0/255</b><span>error vs. the reference (fp32)</span></div>
+        </div>
+        <p class="footnote reveal">NVIDIA Turing laptop GPU, Chromium. Method and raw numbers live in the repository's <code>docs/PERFORMANCE.md</code>.</p>
+      </section>
+
+      <!-- ========================================================== compare -->
+      <section class="section" id="compare">
+        <header class="section-head reveal">
+          <p class="eyebrow">The honest table</p>
+          <h2>Pick your <span class="grad">trade-off.</span></h2>
+        </header>
+        <div class="table-wrap reveal">
+          <table class="compare">
+            <thead>
+              <tr><th></th><th class="us">lucent</th><th>Cloud upscalers</th><th>Desktop apps</th></tr>
+            </thead>
+            <tbody>
+              <tr><th>Your photos leave your device</th><td class="us yes">Never</td><td>Uploaded</td><td>No</td></tr>
+              <tr><th>Install</th><td class="us yes">None, it's a tab</td><td>None</td><td>Hundreds of MB</td></tr>
+              <tr><th>Account</th><td class="us yes">No</td><td>Usually</td><td>Usually, for the licence</td></tr>
+              <tr><th>Price</th><td class="us yes">$0</td><td>Credits / subscription</td><td>Paid licence, typically</td></tr>
+              <tr><th>Works on a phone</th><td class="us yes">Yes, with WebGPU</td><td>Yes</td><td>No</td></tr>
+              <tr><th>Face recovery &amp; video</th><td class="us">Not yet</td><td>Varies</td><td>Often</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================================== pricing -->
+      <section class="section" id="pricing">
+        <header class="section-head reveal">
+          <p class="eyebrow">Pricing</p>
+          <h2>Your GPU already <span class="grad">paid for this.</span></h2>
+        </header>
+        <div class="plans">
+          <article class="plan reveal spot">
+            <h3>Hobby</h3>
+            <p class="price"><b>$0</b>/forever</p>
+            <ul><li>16× upscaling</li><li>Both AI models</li><li>Unlimited images</li><li>PNG, JPEG, WebP</li></ul>
+            <a class="btn-ghost block" href="/app">Start free</a>
+          </article>
+          <article class="plan featured reveal spot">
+            <span class="ribbon">Most popular</span>
+            <h3>Pro</h3>
+            <p class="price"><b>$0</b>/forever</p>
+            <ul><li>Everything in Hobby</li><li>Batch export to a folder</li><li>A sense of professionalism</li><li>Priority access to your own GPU</li></ul>
+            <a class="btn-cta block magnetic" href="/app">Go Pro (it's free)</a>
+          </article>
+          <article class="plan reveal spot">
+            <h3>Enterprise</h3>
+            <p class="price"><b>$0</b>/forever</p>
+            <ul><li>Everything in Pro</li><li>SSO: you're already signed in to your laptop</li><li>Data residency: your desk</li><li>SLA: as good as your fans</li></ul>
+            <a class="btn-ghost block" href="/app">Contact your GPU</a>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============================================================= faq -->
+      <section class="section narrow" id="faq">
+        <header class="section-head reveal">
+          <p class="eyebrow">FAQ</p>
+          <h2>Questions, <span class="grad">answered.</span></h2>
+        </header>
+        <div class="faq">
+          <details class="reveal"><summary>Is it really free? What's the catch?</summary>
+            <p>No catch. All the compute happens on your hardware, so there is no server bill to pass on. The app downloads about 6 MB of model weights once (cached afterwards) and that's the only traffic.</p></details>
+          <details class="reveal"><summary>Where do my images go?</summary>
+            <p>Nowhere. They're decoded, enhanced and encoded inside the browser tab. There's no backend to send them to. Open your browser's network panel and watch.</p></details>
+          <details class="reveal"><summary>Which browsers work?</summary>
+            <p>Anything with WebGPU: Chrome, Edge and Brave on desktop, Safari 26+, and Chrome on Android. Half precision (fp16) is used where the GPU supports it, for about twice the speed.</p></details>
+          <details class="reveal"><summary>How big can images get?</summary>
+            <p>Up to 16× the input size and about 120 megapixels of output, the most a browser canvas holds reliably. Above 4×, lucent runs two AI passes.</p></details>
+          <details class="reveal"><summary>What model is it?</summary>
+            <p>Real-ESRGAN's compact models (BSD-3-Clause, by Xintao Wang et al.), converted to fp16 and run on WebGPU kernels written for lucent. No ONNX Runtime, no WASM.</p></details>
+          <details class="reveal"><summary>Is the added detail "real"?</summary>
+            <p>It's reconstructed: the network predicts plausible texture and edges from what's there. That's what makes it look great, and it's also why you shouldn't use it as forensic evidence.</p></details>
+        </div>
+      </section>
+
+      <!-- ========================================================= final -->
+      <section class="final">
+        <h2 class="final-title reveal">Make it <span class="grad">lucent.</span></h2>
+        <a class="btn-cta huge magnetic reveal" href="/app">Open the app <span aria-hidden="true">→</span></a>
+        <p class="reveal muted">No sign-up. It's already running.</p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div>
+        <a class="nav-brand" href="/"><img src="/favicon.svg" alt="" width="20" height="20" /><span>lucent</span></a>
+        <p class="muted">On-device AI image upscaling. MIT-licensed code.</p>
+      </div>
+      <div class="muted small">
+        Models: <a href="https://github.com/xinntao/Real-ESRGAN" rel="noopener">Real-ESRGAN</a> (BSD-3-Clause).
+        Photo: Apollo 11, AS11-40-5903, NASA, public domain.
+      </div>
+    </footer>
+
+    <script type="module" src="/src/landing/main.ts"></script>
+  </body>
+</html>

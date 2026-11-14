@@ -14,7 +14,8 @@
     "bench": "vitest run bench/",
     "test:watch": "vitest",
     "convert": "node scripts/convert-weights.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "render-assets": "node scripts/render-assets.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -28,5 +29,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@fontsource-variable/space-grotesk": "^5.3.0"
   }
 }
