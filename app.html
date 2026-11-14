@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>lucent — AI image upscaler, on your device</title>
+    <title>lucent — editor</title>
     <meta name="description" content="Upscale, denoise and sharpen images with AI, entirely in your browser on your GPU. Nothing is uploaded." />
     <meta name="theme-color" content="#0e1014" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -11,11 +11,11 @@
   <body>
     <div class="app" id="app">
       <header class="topbar">
-        <div class="brand">
+        <a class="brand" href="/" title="lucent home">
           <img class="logo" src="/favicon.svg" alt="" width="24" height="24" />
           <span class="brand-name">lucent</span>
           <span class="brand-tag">on-device AI upscaler</span>
-        </div>
+        </a>
         <div class="topbar-actions">
           <span class="gpu-badge" id="gpu-badge" title="Runs on this GPU">checking GPU…</span>
           <button class="btn ghost" id="open-btn" title="Open images (Ctrl+O)">
@@ -41,7 +41,7 @@
                 <circle cx="33" cy="18" r="3" />
               </svg>
               <h1>Drop images to enhance</h1>
-              <p>Upscale up to 4×, remove noise and recover detail with AI that runs on your own GPU. Nothing leaves your device.</p>
+              <p>Upscale up to 16×, remove noise and recover detail with AI that runs on your own GPU. Nothing leaves your device.</p>
               <div class="empty-actions">
                 <button class="btn primary" id="empty-open">Choose images</button>
                 <button class="btn ghost" id="sample-btn">Try a sample</button>
@@ -91,8 +91,9 @@
               <div class="seg wide" role="radiogroup" id="scale-seg">
                 <button data-scale="1" role="radio">1×</button>
                 <button data-scale="2" role="radio">2×</button>
-                <button data-scale="3" role="radio">3×</button>
                 <button data-scale="4" role="radio">4×</button>
+                <button data-scale="8" role="radio">8×</button>
+                <button data-scale="16" role="radio">16×</button>
               </div>
               <div class="dims">
                 <label>W <input type="number" id="out-w" min="1" inputmode="numeric" /></label>
