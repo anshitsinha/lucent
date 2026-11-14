@@ -40,11 +40,46 @@ const check = (ok, msg) => {
 };
 
 try {
+  // ---- homepage
+  {
+    const home = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    const errs = [];
+    home.on("console", (m) => m.type() === "error" && errs.push(m.text()));
+    home.on("pageerror", (e) => errs.push(String(e)));
+    await home.goto(url);
+    await home.waitForFunction(() => /Enhanced live|pre-rendered/.test(document.getElementById("demo-status")?.textContent ?? ""), null, { timeout: 60000 });
+    check(true, `home demo: ${await home.textContent("#demo-status")}`);
+    await home.waitForTimeout(800);
+    await home.screenshot({ path: `${OUT}/home-01-hero.png` });
+    const zoomTop = await home.evaluate(() => document.getElementById("zoom").offsetTop);
+    const zoomLen = await home.evaluate(() => document.getElementById("zoom").offsetHeight - innerHeight);
+    for (const [i, p] of [0.15, 0.45, 0.7, 0.95].entries()) {
+      await home.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), zoomTop + zoomLen * p);
+      await home.waitForTimeout(450);
+      await home.screenshot({ path: `${OUT}/home-02-zoom-${i}.png` });
+    }
+    for (const id of ["features", "how", "speed", "pricing"]) {
+      await home.evaluate((id) => document.getElementById(id).scrollIntoView({ behavior: "instant" }), id);
+      await home.waitForTimeout(1300);
+      await home.screenshot({ path: `${OUT}/home-03-${id}.png` });
+    }
+    check(errs.length === 0, `home console errors: ${errs.length ? errs.join(" | ") : "none"}`);
+    const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await phone.goto(url);
+    await phone.waitForTimeout(1500);
+    const overflow = await phone.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    check(!overflow, "home phone: no horizontal overflow");
+    await phone.screenshot({ path: `${OUT}/home-04-phone.png` });
+    await home.close();
+    await phone.close();
+  }
+
+  // ---- app
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, acceptDownloads: true });
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto(url);
+  await page.goto(new URL("app", url).href);
   await page.waitForFunction(() => document.getElementById("gpu-badge")?.classList.contains("ok"), null, { timeout: 15000 });
   const badge = await page.textContent("#gpu-badge");
   // Playwright's bundled Chromium only offers SwiftShader: far too slow to be a real test
@@ -89,9 +124,25 @@ try {
   check(true, `6.4 MP at 2x: ${await page.textContent("#status-text")} (${await page.textContent("#status-stats")})`);
   await page.screenshot({ path: `${OUT}/05-batch.png` });
 
+  // 16x: a 240 x 234 crop of the sample -> 3840 x 3744, two AI passes
+  await page.evaluate(async () => {
+    const img = await createImageBitmap(await (await fetch("/samples/apollo11-aldrin.jpg")).blob());
+    const c = new OffscreenCanvas(240, 234);
+    c.getContext("2d").drawImage(img, 230, 0, 240, 234, 0, 0, 240, 234);
+    const blob = await c.convertToBlob({ type: "image/png" });
+    window.lucent.addFiles([new File([blob], "crop.png", { type: "image/png" })]);
+  });
+  await page.click("#queue .qitem:last-child");
+  await page.click('#scale-seg [data-scale="16"]');
+  await page.waitForFunction(() => /pass 2/.test(document.getElementById("status-text")?.textContent ?? ""), null, { timeout: 60000 });
+  await page.waitForFunction(() => document.getElementById("status-text")?.textContent?.startsWith("Done"), null, { timeout: 300000 });
+  const dims = await page.evaluate(() => [document.getElementById("out-w").value, document.getElementById("out-h").value].join("x"));
+  check(dims === "3840x3744", `16x: ${dims}, ${await page.textContent("#status-text")} (${await page.textContent("#status-stats")})`);
+  await page.screenshot({ path: `${OUT}/06-16x.png` });
+
   // mobile layout
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await phone.goto(url);
+  await phone.goto(new URL("app", url).href);
   await phone.waitForFunction(() => document.getElementById("gpu-badge")?.classList.contains("ok"), null, { timeout: 15000 });
   await phone.click("#sample-btn");
   await phone.waitForFunction(() => document.getElementById("status-text")?.textContent?.startsWith("Done"), null, { timeout: 120000 });
