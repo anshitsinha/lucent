@@ -3,19 +3,23 @@
 **An AI image upscaler and enhancer that runs entirely in your browser, on
 your own GPU.** **[Open lucent →](https://lucent-six-hazel.vercel.app)**
 
-Upscale up to 4×, remove noise and recover detail, compare
+Upscale up to **16×**, remove noise and recover detail, compare
 before/after live, and export. Nothing is uploaded: there is no server.
 
 It runs Real-ESRGAN's compact models on **hand-written WebGPU kernels**:
 no ONNX Runtime, no WASM blob, no model server. The whole app is 15 KB of
 gzipped JS plus 6 MB of fp16 weights.
 
-![lucent: before/after split view of an Apollo 11 photo enhanced 2×](docs/screenshot.png)
+![lucent homepage: "Zoom. Enhance." with a live before/after that runs on the visitor's GPU](docs/home.png)
+
+![The editor: before/after split view of an Apollo 11 photo enhanced 2×](docs/screenshot.png)
 
 ## Features
 
-- **AI upscaling, 1×–4×** with presets or an exact output size in pixels.
-  1× is pure enhancement (denoise and detail at the original size).
+- **AI upscaling, 1×–16×** with presets or an exact output size in pixels.
+  Up to 4× is one pass of the network. Above that, lucent chains two passes
+  (√scale each, so 16× = 4× · 4×), and the second pass denoises gently so
+  detail doesn't go plastic. 1× is pure enhancement at the original size.
 - **Two models.** *Standard* for photos (`realesr-general-x4v3`) and
   *Illustration* for anime, art and line work (`realesr-animevideov3`).
 - **Denoise strength** is real network interpolation (Real-ESRGAN's DNI):
@@ -41,6 +45,7 @@ NVIDIA Turing laptop GPU, fp16, measured through the app
 | --- | --- | ---: |
 | 640×624 photo | 4× → 2560×2496 | 0.5 s |
 | 2560×2496 (6.4 MP) | 2× → 25.6 MP | 6.9 s |
+| 240×234 crop | 16× → 3840×3744 (two passes) | 1.3 s |
 
 The conv kernel runs at 3.1 TFLOP/s on that GPU, 5.3× faster than the first
 version, through register blocking, weights staged in workgroup memory and
@@ -59,7 +64,7 @@ stays within 2/255 of untiled output, so there are no visible seams.
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173
+npm run dev        # homepage at http://localhost:5173, editor at /app
 ```
 
 Needs a browser with WebGPU: desktop Chrome / Edge / Brave 113+, Safari 26+,
@@ -83,6 +88,7 @@ npm run bench      # conv-kernel tiling × precision sweep
 npm run build && npm run smoke   # drive the built app end to end, screenshots in smoke-out/
 SMOKE_URL=https://lucent-six-hazel.vercel.app npm run smoke   # same, against a deployment
 npm run convert    # re-create public/models/*.safetensors from the upstream .pth files
+npm run render-assets   # re-render the homepage showcase crops with lucent itself
 ```
 
 Tests use whichever Chrome, Edge or Brave is installed (`LUCENT_BROWSER`
@@ -107,10 +113,11 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Project layout
 
 ```
-src/gpu/        WebGPU: device, WGSL generators, network, tiled enhancer
+src/gpu/        WebGPU: device, WGSL generators, network, tiled enhancer, multi-pass
 src/model/      safetensors reader, SRVGGNetCompact weights + DNI blend
 src/reference/  CPU forward pass the kernels are tested against
-src/app/        UI: viewer, controls, queue, export
+src/app/        the editor (/app): viewer, controls, queue, export
+src/landing/    the homepage (/): WebGL background, live GPU demo, 16× zoom
 scripts/        .pth → safetensors converter, end-to-end smoke test
 test/, bench/   GPU tests and the kernel sweep
 ```

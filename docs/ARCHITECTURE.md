@@ -63,6 +63,19 @@ a readback buffer. Two readback buffers alternate, so the GPU works on tile
 n+1 while tile n is mapped and painted. Tiles run nearest-first to a focus
 point, which the app sets to the centre of the view.
 
+## Beyond 4×: chained passes (`src/gpu/upscale.ts`)
+
+The network is 4× by construction. For larger scales `planPasses` splits
+the scale evenly, √s per pass (8× = 2.83 × 2.83, 16× = 4 × 4). That costs
+about the same as running the second pass at full 4×, and the second pass
+starts from an AI-upscaled image instead of a bicubic one. Each pass gets its
+own weights. The app gives the second pass a quarter of the denoise strength,
+because its input is already clean and denoising again over-smooths it.
+"Preserve original" applies only in pass 1, where it blends toward the real
+original. Sharpen and grain apply only in the last pass, at final
+resolution. `EnhanceOptions.size` (independent x/y scale) makes the last
+pass land exactly on the requested dimensions.
+
 ## Post-processing
 
 - **compose:** reads the 48-channel network output as a 4× image
