@@ -227,22 +227,22 @@ export class Viewer {
     if (this.activeTile) {
       const t = this.activeTile;
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
-      ctx.strokeStyle = `rgba(120, 190, 255, ${0.35 + 0.45 * pulse})`;
+      ctx.strokeStyle = `rgba(255, 112, 51, ${0.35 + 0.5 * pulse})`;
       ctx.lineWidth = 1.5 * dpr;
       ctx.strokeRect(dx + t.x * z, dy + t.y * z, t.width * z, t.height * z);
     }
 
     if (this.mode === "split") {
       const x = Math.round(sx * dpr) + 0.5;
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillStyle = "rgba(236,231,223,0.92)";
       ctx.fillRect(x - dpr / 2, 0, dpr, h * dpr);
       // handle
       const cy = (h / 2) * dpr;
       ctx.beginPath();
       ctx.arc(x, cy, 14 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(20,22,28,0.85)";
+      ctx.fillStyle = "rgba(20,20,19,0.85)";
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.strokeStyle = "rgba(236,231,223,0.92)";
       ctx.lineWidth = 1.5 * dpr;
       ctx.stroke();
       ctx.beginPath();
@@ -259,9 +259,9 @@ export class Viewer {
         ctx.textAlign = align;
         const m = ctx.measureText(text).width;
         const bx = align === "right" ? lx - m - 8 * dpr : lx;
-        ctx.fillStyle = "rgba(10,12,16,0.65)";
+        ctx.fillStyle = "rgba(12,12,11,0.68)";
         ctx.fillRect(bx, 12 * dpr, m + 16 * dpr, 20 * dpr);
-        ctx.fillStyle = "rgba(255,255,255,0.92)";
+        ctx.fillStyle = "rgba(236,231,223,0.95)";
         ctx.fillText(text, align === "right" ? lx : lx + 8 * dpr, 16.5 * dpr);
       };
       if (sx > 90) label("Original", x - 12 * dpr, "right");
