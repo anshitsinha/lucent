@@ -1,5 +1,5 @@
 /**
- * Hero background: an iridescent field of crystal facets (Voronoi cells over
+ * Hero background: warm grey crystal facets (Voronoi cells over
  * domain-warped noise) that drifts, follows the cursor and dims as you scroll.
  * WebGL1, rendered at reduced resolution, paused when the tab is hidden.
  */
@@ -50,18 +50,21 @@ void main() {
   }
   float edge = 1.0 - smoothstep(0.0, 0.05, d2 - d1);
 
-  vec3 iri = 0.5 + 0.5 * cos(6.2831 * (vec3(0.0, 0.33, 0.67) + n * 1.4 + id * 0.35 + t * 0.02));
-  iri = mix(iri, vec3(0.36, 0.49, 1.0), 0.35);
+  // warm monochrome facets (like silver halide), lit orange by the safelight
+  float shade = 0.55 + 0.45 * fract(id * 7.31 + n * 0.8);
+  vec3 iri = mix(vec3(0.62, 0.58, 0.53), vec3(0.93, 0.9, 0.86), shade);
+  vec3 safelight = vec3(1.0, 0.44, 0.2);
 
   // light pools: top right, and wherever the cursor is
   float pool = smoothstep(1.5, 0.0, length(uv - vec2(0.45, 0.22)));
   float cur = exp(-3.2 * length(uv - mouse));
   float lift = pool * 0.9 + cur * 0.7;
 
-  vec3 col = vec3(0.02, 0.023, 0.04);
-  col += iri * (0.09 + 0.5 * n * n) * lift;
-  col += iri * edge * 0.32 * lift;
-  col += vec3(0.48, 0.95, 1.0) * edge * cur * 0.28;
+  vec3 col = vec3(0.05, 0.05, 0.047);
+  col += iri * (0.03 + 0.16 * n * n) * lift;
+  col += iri * edge * 0.12 * lift;
+  col += safelight * (0.05 + 0.25 * n * n) * cur;
+  col += safelight * edge * (0.35 * cur + 0.06 * pool);
 
   col *= 1.0 - 0.55 * clamp(s, 0.0, 1.0);          // dim as the page scrolls
   col *= 1.0 - 0.35 * dot(uv * 0.8, uv * 0.8);      // vignette

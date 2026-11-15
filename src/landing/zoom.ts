@@ -101,9 +101,9 @@ export async function startZoom() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const x = Math.round(half * dpr);
     const grd = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grd.addColorStop(0, "rgba(124,243,255,0)");
-    grd.addColorStop(0.5, "rgba(124,243,255,0.95)");
-    grd.addColorStop(1, "rgba(124,243,255,0)");
+    grd.addColorStop(0, "rgba(255,112,51,0)");
+    grd.addColorStop(0.5, "rgba(255,112,51,0.95)");
+    grd.addColorStop(1, "rgba(255,112,51,0)");
     ctx.fillStyle = grd;
     ctx.fillRect(x - dpr, 0, 2 * dpr, canvas.height);
 
